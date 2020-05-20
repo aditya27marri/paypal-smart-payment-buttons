@@ -80,6 +80,10 @@ export type FundingEligibility = {|
         eligible : boolean,
         vaultable : boolean
     },
+    mercadopago : {
+        eligible : boolean,
+        vaultable : boolean
+    },
     card : {
         eligible : boolean,
         branded : boolean,
@@ -260,6 +264,10 @@ const FUNDING_ELIGIBILITY_QUERY = `
                 vaultable
             }
             trustly {
+                eligible
+                vaultable
+            }
+            mercadopago {
                 eligible
                 vaultable
             }

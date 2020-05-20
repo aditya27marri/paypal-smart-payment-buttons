@@ -145,6 +145,9 @@ export async function graphQL(req : {}, payload : $ReadOnlyArray<{ query : strin
                     },
                     trustly: {
                         eligible: false
+                    },
+                    mercadopago: {
+                        eligible: false
                     }
                 }
             };

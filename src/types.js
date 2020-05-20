@@ -201,6 +201,10 @@ export type FundingEligibilityType = {|
     trustly? : {
         eligible : boolean,
         vaultable? : boolean
+    },
+    mercadopago? : {
+        eligible : boolean,
+        vaultable? : boolean
     }
 |};
 
