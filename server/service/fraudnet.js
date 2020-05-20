@@ -1,10 +1,10 @@
 /* @flow */
 
-import { ENV, FUNDING, CARD } from '@paypal/sdk-constants';
+import { ENV, FUNDING } from '@paypal/sdk-constants';
 
 import { FNCLS, FRAUDNET_ID } from '../config';
-
-import type { FundingEligibility } from './fundingEligibility';
+import { safeJSON } from '../lib';
+import type { Wallet } from '../../src/types';
 
 const FRAUDNET_URL = {
     [ ENV.LOCAL ]:      'https://www.msmaster.qa.paypal.com/en_US/m/fb-raw.js',
@@ -14,39 +14,29 @@ const FRAUDNET_URL = {
     [ ENV.TEST ]:       'https://c.paypal.com/da/r/fb.js'
 };
 
-export function shouldRenderFraudnet({ fundingEligibility } : { fundingEligibility : FundingEligibility }) : boolean {
+export function shouldRenderFraudnet({ wallet } : {| wallet : Wallet |}) : boolean {
     for (const fundingSource of Object.values(FUNDING)) {
         // $FlowFixMe
-        const fundingConfig = fundingEligibility[fundingSource];
+        const walletConfig = wallet && wallet[fundingSource];
 
-        if (fundingConfig && fundingConfig.vaultedInstruments && fundingConfig.vaultedInstruments.length) {
+        if (walletConfig && walletConfig.instruments && walletConfig.instruments.length) {
             return true;
-        }
-
-        if (fundingSource === FUNDING.CARD && fundingConfig && fundingConfig.vendors) {
-            for (const card of Object.values(CARD)) {
-                const cardConfig = fundingConfig.vendors[card];
-
-                if (cardConfig && cardConfig.vaultedInstruments && cardConfig.vaultedInstruments.length) {
-                    return true;
-                }
-            }
         }
     }
 
     return false;
 }
 
-export function renderFraudnetScript({ id, cspNonce, env } : { id : string, cspNonce : string, env : $Values<typeof ENV> }) : string {
+export function renderFraudnetScript({ id, cspNonce, env } : {| id : string, cspNonce : string, env : $Values<typeof ENV> |}) : string {
 
-    const fraudnetConfig = JSON.stringify({
+    const fraudnetConfig = {
         f: id,
         s: FRAUDNET_ID
-    });
+    };
 
     return `
         <script nonce="${ cspNonce }" type="application/json" id="fconfig" fncls="${ FNCLS }">
-            ${ fraudnetConfig }
+            ${ safeJSON(fraudnetConfig) }
         </script>
         <script nonce="${ cspNonce }" type="text/javascript" src="${ FRAUDNET_URL[env] }" async></script>
     `;

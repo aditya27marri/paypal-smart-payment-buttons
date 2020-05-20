@@ -3,11 +3,11 @@
 import type { ZalgoPromise } from 'zalgo-promise/src';
 import { FPTI_KEY } from '@paypal/sdk-constants/src';
 
-import { SMART_API_URI, PAYMENTS_API_URL } from '../config';
+import { PAYMENTS_API_URL } from '../config';
 import { getLogger } from '../lib';
-import { FPTI_STATE, FPTI_TRANSITION, FPTI_CONTEXT_TYPE, HEADERS } from '../constants';
+import { FPTI_TRANSITION, FPTI_CONTEXT_TYPE, HEADERS } from '../constants';
 
-import { callSmartAPI, callRestAPI } from './api';
+import { callRestAPI } from './api';
 
 type PaymentAPIOptions = {|
     facilitatorAccessToken : string,
@@ -48,7 +48,6 @@ export function createPayment(payment : PaymentCreateRequest, { facilitatorAcces
         }
 
         getLogger().track({
-            [FPTI_KEY.STATE]:        FPTI_STATE.BUTTON,
             [FPTI_KEY.TRANSITION]:   FPTI_TRANSITION.CREATE_PAYMENT,
             [FPTI_KEY.CONTEXT_TYPE]: FPTI_CONTEXT_TYPE.PAYMENT_ID,
             [FPTI_KEY.TOKEN]:        paymentID,
@@ -82,67 +81,44 @@ export function createPaymentToken(payment : PaymentCreateRequest, { facilitator
         });
 }
 
-export function getPayment(paymentID : string, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID } : PaymentAPIOptions) : ZalgoPromise<PaymentResponse> {
-    return buyerAccessToken
-        ? callSmartAPI({
-            accessToken: buyerAccessToken,
-            url:         `${ SMART_API_URI.PAYMENT }/${ paymentID }`
-        })
-        : callRestAPI({
-            accessToken: facilitatorAccessToken,
-            url:         `${ PAYMENTS_API_URL }/${ paymentID }`,
-            headers:     {
-                [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
-            }
-        });
+export function getPayment(paymentID : string, { facilitatorAccessToken, partnerAttributionID } : PaymentAPIOptions) : ZalgoPromise<PaymentResponse> {
+    return callRestAPI({
+        accessToken: facilitatorAccessToken,
+        url:         `${ PAYMENTS_API_URL }/${ paymentID }`,
+        headers:     {
+            [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
+        }
+    });
 }
 
-export function executePayment(paymentID : string, payerID : string, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID } : PaymentAPIOptions) : ZalgoPromise<PaymentResponse> {
-    return buyerAccessToken
-        ? callSmartAPI({
-            accessToken: buyerAccessToken,
-            method:      'post',
-            url:         `${ SMART_API_URI.PAYMENT }/${ paymentID }/execute`,
-            json:        {
-                data: {
-                    payer_id: payerID
-                }
-            }
-        })
-        : callRestAPI({
-            accessToken: facilitatorAccessToken,
-            method:      `post`,
-            url:         `${ PAYMENTS_API_URL }/${ paymentID }/execute`,
-            headers:     {
-                [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
-            },
-            data: {
-                payer_id: payerID
-            }
-        });
+export function executePayment(paymentID : string, payerID : string, { facilitatorAccessToken, partnerAttributionID } : PaymentAPIOptions) : ZalgoPromise<PaymentResponse> {
+    return callRestAPI({
+        accessToken: facilitatorAccessToken,
+        method:      `post`,
+        url:         `${ PAYMENTS_API_URL }/${ paymentID }/execute`,
+        headers:     {
+            [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
+        },
+        data: {
+            payer_id: payerID
+        }
+    });
 }
 
 type PatchData = {|
     
 |};
 
-export function patchPayment(paymentID : string, data : PatchData, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID } : PaymentAPIOptions) : ZalgoPromise<PaymentResponse> {
+export function patchPayment(paymentID : string, data : PatchData, { facilitatorAccessToken, partnerAttributionID } : PaymentAPIOptions) : ZalgoPromise<PaymentResponse> {
     const patchData = Array.isArray(data) ? { patch: data } : data;
 
-    return buyerAccessToken
-        ? callSmartAPI({
-            accessToken: buyerAccessToken,
-            method:      'post',
-            url:         `${ SMART_API_URI.ORDER }/${ paymentID }/patch`,
-            json:        { data: patchData }
-        })
-        : callRestAPI({
-            accessToken: facilitatorAccessToken,
-            method:      `patch`,
-            url:         `${ PAYMENTS_API_URL }/${ paymentID }`,
-            data:        patchData,
-            headers:     {
-                [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
-            }
-        });
+    return callRestAPI({
+        accessToken: facilitatorAccessToken,
+        method:      `patch`,
+        url:         `${ PAYMENTS_API_URL }/${ paymentID }`,
+        data:        patchData,
+        headers:     {
+            [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
+        }
+    });
 }

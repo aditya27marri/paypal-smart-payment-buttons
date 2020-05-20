@@ -1,260 +1,339 @@
 /* @flow */
 
 import { COUNTRY, CURRENCY, INTENT, COMMIT, VAULT, CARD, FUNDING } from '@paypal/sdk-constants';
+import { params, types, query } from 'typed-graphqlify';
+import { values } from 'belter';
+import { strictMerge } from 'strict-merge';
 
-import type { GraphQLBatch } from '../lib';
+import { isDefined, type GraphQLBatch } from '../lib';
 import type { ExpressRequest, LoggerType } from '../types';
 
 export type FundingEligibility = {|
-    paypal : {
+    paypal : {|
         eligible : boolean,
         vaultable : boolean,
-        vaultedInstruments : {
+        vaultedInstruments : {|
             id : string,
-            label : {
+            label : {|
                 description : string
-            }
-        }
-    },
-    venmo : {
+            |}
+        |}
+    |},
+    venmo : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    itau : {
+    |},
+    itau : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    credit : {
+    |},
+    credit : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    sepa : {
+    |},
+    sepa : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    ideal : {
+    |},
+    ideal : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    bancontact : {
+    |},
+    bancontact : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    giropay : {
+    |},
+    giropay : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    eps : {
+    |},
+    eps : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    sofort : {
+    |},
+    sofort : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    mybank : {
+    |},
+    mybank : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    p24 : {
+    |},
+    p24 : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    zimpler : {
+    |},
+    zimpler : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    wechatpay : {
+    |},
+    wechatpay : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    payu : {
+    |},
+    payu : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    trustly : {
+    |},
+    trustly : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    blik : {
+    |},
+    blik : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    mercadopago : {
+    |},
+    oxxo : {|
         eligible : boolean,
         vaultable : boolean
-    },
-    card : {
+    |},
+    maxima : {|
+        eligible : boolean,
+        vaultable : boolean
+    |},
+    boleto : {|
+        eligible : boolean,
+        vaultable : boolean
+    |},
+    mercadopago : {|
+        eligible : boolean,
+        vaultable : boolean
+    |},
+    card : {|
         eligible : boolean,
         branded : boolean,
-        vendors : {
-            visa : {
+        vendors : {|
+            visa : {|
                 eligible : boolean,
                 vaultable : boolean,
-                vaultedInstruments : {
+                vaultedInstruments : {|
                     id : string,
-                    label : {
+                    label : {|
                         description : string
-                    }
-                }
-            },
-            mastercard : {
+                    |}
+                |}
+            |},
+            mastercard : {|
                 eligible : boolean,
                 vaultable : boolean,
-                vaultedInstruments : {
+                vaultedInstruments : {|
                     id : string,
-                    label : {
+                    label : {|
                         description : string
-                    }
-                }
-            },
-            amex : {
+                    |}
+                |}
+            |},
+            amex : {|
                 eligible : boolean,
                 vaultable : boolean,
-                vaultedInstruments : {
+                vaultedInstruments : {|
                     id : string,
-                    label : {
+                    label : {|
                         description : string
-                    }
-                }
-            },
-            discover : {
+                    |}
+                |}
+            |},
+            discover : {|
                 eligible : boolean,
                 vaultable : boolean,
-                vaultedInstruments : {
+                vaultedInstruments : {|
                     id : string,
-                    label : {
+                    label : {|
                         description : string
-                    }
-                }
-            },
-            hiper : {
+                    |}
+                |}
+            |},
+            hiper : {|
                 eligible : boolean,
                 vaultable : boolean,
-                vaultedInstruments : {
+                vaultedInstruments : {|
                     id : string,
-                    label : {
+                    label : {|
                         description : string
-                    }
-                }
-            },
-            elo : {
+                    |}
+                |}
+            |},
+            elo : {|
                 eligible : boolean,
                 vaultable : boolean,
-                vaultedInstruments : {
+                vaultedInstruments : {|
                     id : string,
-                    label : {
+                    label : {|
                         description : string
-                    }
-                }
-            },
-            jcb : {
+                    |}
+                |}
+            |},
+            jcb : {|
                 eligible : boolean,
                 vaultable : boolean,
-                vaultedInstruments : {
+                vaultedInstruments : {|
                     id : string,
-                    label : {
+                    label : {|
                         description : string
-                    }
-                }
+                    |}
+                |}
+            |}
+        |}
+    |}
+|};
+
+function buildFundingEligibilityQuery(basicFundingEligibility : FundingEligibility) : string {
+    const InputTypes = {
+        $clientID:        'String',
+        $buyerCountry:    'CountryCodes',
+        $ip:              'String',
+        $cookies:         'String',
+        $currency:        'SupportedCountryCurrencies',
+        $intent:          'FundingEligibilityIntent',
+        $commit:          'Boolean',
+        $vault:           'Boolean',
+        $disableFunding:  '[ SupportedPaymentMethodsType ]',
+        $disableCard:     '[ SupportedCardsType ]',
+        $merchantID:      '[ String ]',
+        $buttonSessionID: 'String',
+        $userAgent:       'String'
+    };
+
+    const Inputs = {
+        clientId:        '$clientID',
+        buyerCountry:    '$buyerCountry',
+        ip:              '$ip',
+        cookies:         '$cookies',
+        currency:        '$currency',
+        intent:          '$intent',
+        commit:          '$commit',
+        vault:           '$vault',
+        disableFunding:  '$disableFunding',
+        disableCard:     '$disableCard',
+        merchantId:      '$merchantID',
+        buttonSessionId: '$buttonSessionID',
+        userAgent:       '$userAgent'
+    };
+
+    const getVaultedInstrumentQuery = () => {
+        return {
+            id:    types.string,
+            label: {
+                description: types.string
+            }
+        };
+    };
+
+    const getBasicFundingEligibilityQuery = () => {
+        return {
+            eligible: types.boolean
+        };
+    };
+
+    const getBasicCardVendorQuery = () => {
+        return {
+            eligible:           types.boolean,
+            vaultable:          types.boolean,
+            vaultedInstruments: getVaultedInstrumentQuery()
+        };
+    };
+
+    const getVendorQuery = () => {
+        return {
+            [CARD.VISA]:       getBasicCardVendorQuery(),
+            [CARD.MASTERCARD]: getBasicCardVendorQuery(),
+            [CARD.AMEX]:       getBasicCardVendorQuery(),
+            [CARD.DISCOVER]:   getBasicCardVendorQuery(),
+            [CARD.HIPER]:      getBasicCardVendorQuery(),
+            [CARD.ELO]:        getBasicCardVendorQuery(),
+            [CARD.JCB]:        getBasicCardVendorQuery()
+        };
+    };
+
+    const getPayPalQuery = () => {
+        return {
+            eligible:           types.boolean,
+            vaultable:          types.boolean,
+            vaultedInstruments: getVaultedInstrumentQuery()
+        };
+    };
+
+    const getCardQuery = () => {
+        return {
+            eligible: types.boolean,
+            branded:  types.boolean,
+            vendors:  getVendorQuery()
+        };
+    };
+
+    const fundingQuery = {
+        [ FUNDING.PAYPAL ]:     getPayPalQuery(),
+        [ FUNDING.CARD ]:       getCardQuery(),
+        [ FUNDING.VENMO ]:      getBasicFundingEligibilityQuery(),
+        [ FUNDING.ITAU ]:       getBasicFundingEligibilityQuery(),
+        [ FUNDING.CREDIT ]:     getBasicFundingEligibilityQuery(),
+        [ FUNDING.SEPA ]:       getBasicFundingEligibilityQuery(),
+        [ FUNDING.IDEAL ]:      getBasicFundingEligibilityQuery(),
+        [ FUNDING.BANCONTACT ]: getBasicFundingEligibilityQuery(),
+        [ FUNDING.GIROPAY ]:    getBasicFundingEligibilityQuery(),
+        [ FUNDING.EPS ]:        getBasicFundingEligibilityQuery(),
+        [ FUNDING.SOFORT ]:     getBasicFundingEligibilityQuery(),
+        [ FUNDING.MYBANK ]:     getBasicFundingEligibilityQuery(),
+        [ FUNDING.P24 ]:        getBasicFundingEligibilityQuery(),
+        [ FUNDING.ZIMPLER ]:    getBasicFundingEligibilityQuery(),
+        [ FUNDING.WECHATPAY ]:  getBasicFundingEligibilityQuery(),
+        [ FUNDING.PAYU ]:       getBasicFundingEligibilityQuery(),
+        [ FUNDING.BLIK ]:       getBasicFundingEligibilityQuery(),
+        [ FUNDING.TRUSTLY ]:    getBasicFundingEligibilityQuery(),
+        [ FUNDING.OXXO ]:       getBasicFundingEligibilityQuery(),
+        [ FUNDING.MAXIMA ]:     getBasicFundingEligibilityQuery(),
+        [ FUNDING.BOLETO ]:     getBasicFundingEligibilityQuery()
+    };
+
+    const basicCardEligibility = basicFundingEligibility[FUNDING.CARD] && basicFundingEligibility[FUNDING.CARD].vendors;
+    const vendorsQuery = fundingQuery[FUNDING.CARD].vendors;
+
+    for (const card of values(CARD)) {
+        if (basicCardEligibility && basicCardEligibility[card] && vendorsQuery[card]) {
+            if (isDefined(basicCardEligibility[card].eligible)) {
+                delete vendorsQuery[card].eligible;
+            }
+
+            // if (isDefined(basicCardEligibility[card].vaultable)) {
+            //    delete vendorsQuery[card].vaultable;
+            // }
+
+            if (!Object.keys(vendorsQuery[card]).length) {
+                delete vendorsQuery[card];
             }
         }
     }
-|};
 
-const FUNDING_ELIGIBILITY_QUERY = `
-    query GetFundingEligibility(
-        $clientID: String,
-        $buyerCountry: CountryCodes,
-        $ip: String,
-        $cookies: String,
-        $currency: SupportedCountryCurrencies,
-        $intent: FundingEligibilityIntent,
-        $commit: Boolean,
-        $vault: Boolean,
-        $disableFunding: [SupportedPaymentMethodsType],
-        $disableCard: [SupportedCardsType],
-        $merchantID: [String],
-        $buttonSessionID: String,
-        $userAgent: String
-    ) {
-        fundingEligibility(
-            clientId: $clientID
-            buyerCountry: $buyerCountry,
-            ip: $ip,
-            cookies: $cookies,
-            currency: $currency,
-            intent: $intent,
-            commit: $commit,
-            vault: $vault,
-            disableFunding: $disableFunding,
-            disableCard: $disableCard,
-            merchantId: $merchantID,
-            buttonSessionId: $buttonSessionID,
-            userAgent: $userAgent
-        ) {
-            paypal {
-                eligible
-                vaultable
-                vaultedInstruments {
-                    id
-                    label {
-                        description
-                    }
+    if (!Object.keys(vendorsQuery).length) {
+        delete fundingQuery[FUNDING.CARD].vendors;
+    }
+
+    for (const fundingSource of values(FUNDING)) {
+        if ([ FUNDING.VENMO, FUNDING.ITAU ].includes(fundingSource)) {
+            if (basicFundingEligibility[fundingSource] && basicFundingEligibility[fundingSource].eligible) {
+                delete fundingQuery[fundingSource].eligible;
+
+                if (!Object.keys(fundingQuery[fundingSource]).length) {
+                    delete fundingQuery[fundingSource];
                 }
             }
-            venmo {
-                eligible
-                vaultable
+            
+            continue;
+        }
+
+        if (basicFundingEligibility[fundingSource] && fundingQuery[fundingSource]) {
+            if (isDefined(basicFundingEligibility[fundingSource].eligible)) {
+                delete fundingQuery[fundingSource].eligible;
             }
-            itau {
-                eligible
-                vaultable
+
+            // if (isDefined(basicFundingEligibility[fundingSource].vaultable)) {
+            //    delete fundingQuery[fundingSource].vaultable;
+            // }
+
+            if (isDefined(basicFundingEligibility[fundingSource].branded)) {
+                delete fundingQuery[fundingSource].branded;
             }
-            credit {
-                eligible
-                vaultable
-            }
-            sepa {
-                eligible
-                vaultable
-            }
-            ideal {
-                eligible
-                vaultable
-            }
-            bancontact {
-                eligible
-                vaultable
-            }
-            giropay {
-                eligible
-                vaultable
-            }
-            eps {
-                eligible
-                vaultable
-            }
-            sofort {
-                eligible
-                vaultable
-            }
-            mybank {
-                eligible
-                vaultable
-            }
-            p24 {
-                eligible
-                vaultable
-            }
-            zimpler {
-                eligible
-                vaultable
-            }
-            wechatpay {
-                eligible
-                vaultable
-            }
+<<<<<<< HEAD
             payu {
                 eligible
                 vaultable
@@ -346,10 +425,19 @@ const FUNDING_ELIGIBILITY_QUERY = `
                         }
                     }
                 }
+=======
+
+            if (!Object.keys(fundingQuery[fundingSource]).length) {
+                delete fundingQuery[fundingSource];
+>>>>>>> upstream/master
             }
         }
     }
-`;
+
+    return query('GetFundingEligibility', params(InputTypes, {
+        fundingEligibility: params(Inputs, fundingQuery)
+    }));
+}
 
 export type FundingEligibilityOptions = {|
     logger : LoggerType,
@@ -364,18 +452,17 @@ export type FundingEligibilityOptions = {|
     merchantID : ?$ReadOnlyArray<string>,
     buttonSessionID : string,
     clientAccessToken : ?string,
-    defaultFundingEligibility : FundingEligibility
+    basicFundingEligibility : FundingEligibility
 |};
 
 export async function resolveFundingEligibility(req : ExpressRequest, gqlBatch : GraphQLBatch, { logger, clientID, merchantID, buttonSessionID,
-    currency, intent, commit, vault, disableFunding, disableCard, clientAccessToken, buyerCountry, defaultFundingEligibility } : FundingEligibilityOptions) : Promise<FundingEligibility> {
+    currency, intent, commit, vault, disableFunding, disableCard, clientAccessToken, buyerCountry, basicFundingEligibility } : FundingEligibilityOptions) : Promise<FundingEligibility> {
 
     try {
         const ip = req.ip;
         const cookies = req.get('cookie') || '';
         const userAgent = req.get('user-agent') || '';
 
-        // $FlowFixMe
         intent = intent ? intent.toUpperCase() : intent;
         // $FlowFixMe
         disableFunding = disableFunding ? disableFunding.map(source => source.toUpperCase()) : disableFunding;
@@ -383,18 +470,20 @@ export async function resolveFundingEligibility(req : ExpressRequest, gqlBatch :
         disableCard = disableCard ? disableCard.map(source => source.toUpperCase()) : disableCard;
 
         const result = await gqlBatch({
-            query:     FUNDING_ELIGIBILITY_QUERY,
+            query:     buildFundingEligibilityQuery(basicFundingEligibility),
             variables: {
                 clientID, merchantID, buyerCountry, cookies, ip, currency, intent, commit,
-                vault, disableFunding, disableCard, userAgent, buttonSessionID, clientAccessToken
-            }
+                vault, disableFunding, disableCard, userAgent, buttonSessionID
+            },
+            accessToken: clientAccessToken
         });
 
-        return result.fundingEligibility;
+        return strictMerge(basicFundingEligibility, result.fundingEligibility, (first, second) => {
+            return second;
+        });
 
     } catch (err) {
         logger.error(req, 'funding_eligibility_error_fallback', { err: err.stack ? err.stack : err.toString() });
-        return defaultFundingEligibility;
+        return basicFundingEligibility;
     }
-
 }

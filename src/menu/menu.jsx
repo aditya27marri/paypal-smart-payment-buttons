@@ -1,6 +1,7 @@
 /* @flow */
 /** @jsx h */
 
+import type { CrossDomainWindowType } from 'cross-domain-utils/src';
 import { h, Fragment, type Node } from 'preact';
 
 import { openPopup } from '../ui';
@@ -11,18 +12,17 @@ type MenuProps = {|
     cspNonce : string,
     verticalOffset : number,
     choices : $ReadOnlyArray<{|
-        id : string,
         label : string,
         popup? : {|
             width : number,
             height : number
-        |}
+        |},
+        onSelect : ({| win? : ?CrossDomainWindowType |}) => void
     |}>,
-    onChoose : ({ id : string }) => void,
     onBlur : () => void
 |};
 
-export function Menu({ choices, onChoose, onBlur, cspNonce, verticalOffset } : MenuProps) : Node {
+export function Menu({ choices, onBlur, cspNonce, verticalOffset } : MenuProps) : Node {
 
     const autoFocus = useAutoFocus();
 
@@ -36,7 +36,7 @@ export function Menu({ choices, onChoose, onBlur, cspNonce, verticalOffset } : M
             });
         }
 
-        return onChoose({ id: choice.id, win });
+        return choice.onSelect({ win });
     };
 
     return (
@@ -63,6 +63,7 @@ export function Menu({ choices, onChoose, onBlur, cspNonce, verticalOffset } : M
                         padding: 14px 18px;
                         color: #0070ba;
                         cursor: pointer;
+                        line-height: 18px;
                     }
                     
                     .menu-item:first-child {

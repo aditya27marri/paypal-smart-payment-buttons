@@ -2,25 +2,43 @@
 /** @jsx h */
 
 import { h, render, Fragment, type Node } from 'preact';
+import { useState, useEffect } from 'preact/hooks';
+import { noop } from 'belter/src';
+import { ZalgoPromise } from 'zalgo-promise/src';
 
 import { getBody } from '../lib';
 
 import { Menu } from './menu';
 import { useXProps } from './hooks';
 
+const FADE_TIME = 150;
+
 type PageProps = {|
     cspNonce : string
 |};
 
 function Page({ cspNonce } : PageProps) : Node {
-    const { choices, onChoose, verticalOffset, hide } = useXProps();
+    const { choices, onChoose, verticalOffset, hide, onBlur = noop } = useXProps();
+    const [ opaque, setOpaque ] = useState(false);
+    const [ visible, setVisible ] = useState(false);
 
-    if (!choices) {
-        return null;
-    }
+    useEffect(() => {
+        const hasChoices = Boolean(choices && choices.length);
+        setOpaque(hasChoices);
+        setVisible(hasChoices);
+    }, [ choices ]);
 
-    const onBlur = () => {
-        hide();
+    const onChooseHandler = ({ id, win }) => {
+        setVisible(false);
+        return onChoose({ id, win });
+    };
+
+    const onBlurHandler = () => {
+        setOpaque(false);
+        return ZalgoPromise.delay(FADE_TIME).then(() => {
+            setVisible(false);
+            return ZalgoPromise.all([ onBlur(), hide() ]);
+        });
     };
 
     return (
@@ -34,6 +52,8 @@ function Page({ cspNonce } : PageProps) : Node {
                     html, body {
                         margin: 0;
                         padding: 0;
+                        opacity: ${ opaque ? '1' : '0' };
+                        transition: opacity ${ (FADE_TIME / 1000).toFixed(2) }s ease-in-out;
                     }
 
                     body {
@@ -44,7 +64,13 @@ function Page({ cspNonce } : PageProps) : Node {
                 `}
             </style>
 
-            <Menu choices={ choices } onChoose={ onChoose } onBlur={ onBlur } cspNonce={ cspNonce } verticalOffset={ verticalOffset } />
+            {
+                (choices && visible)
+                    ? <Menu
+                        choices={ choices } onChoose={ onChooseHandler } onBlur={ onBlurHandler }
+                        cspNonce={ cspNonce } verticalOffset={ verticalOffset } />
+                    : null
+            }
         </Fragment>
     );
 }

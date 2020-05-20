@@ -1,14 +1,19 @@
 /* @flow */
 
+import { dirname } from 'path';
+
 import { webpackCompile } from 'webpack-mem-compile';
 import webpack from 'webpack';
+import { regexTokenize } from 'belter';
+import type { ChildType, NullableChildType } from 'jsx-pragmatic/src';
 
-import { HTTP_HEADER, HTTP_CONTENT_TYPE, HTTP_STATUS_CODE } from '../config';
+import { HTTP_HEADER, HTTP_CONTENT_TYPE, HTTP_STATUS_CODE, HTTP_CONTENT_DISPOSITION } from '../config';
 import type { ExpressRequest, ExpressResponse, LoggerType, LoggerPayload } from '../types';
 
 function response(res : ExpressResponse, status : $Values<typeof HTTP_STATUS_CODE>, type : $Values<typeof HTTP_CONTENT_TYPE>, message : string) {
     res.status(status)
         .header(HTTP_HEADER.CONTENT_TYPE, type)
+        .header(HTTP_HEADER.CONTENT_DISPOSITION, HTTP_CONTENT_DISPOSITION.INLINE)
         .send(message);
 }
 
@@ -22,6 +27,10 @@ export function clientErrorResponse(res : ExpressResponse, message : string) {
 
 export function htmlResponse(res : ExpressResponse, html : string) {
     response(res, HTTP_STATUS_CODE.SUCCESS, HTTP_CONTENT_TYPE.HTML, html);
+}
+
+export function javascriptResponse(res : ExpressResponse, javascript : string) {
+    response(res, HTTP_STATUS_CODE.SUCCESS, HTTP_CONTENT_TYPE.JAVASCRIPT, javascript);
 }
 
 export function allowFrame(res : ExpressResponse) {
@@ -55,8 +64,8 @@ export function babelRegister(dir : string) {
 }
 
 export function babelRequire<T>(path : string) : T {
-    babelRegister(path);
-
+    babelRegister(dirname(path));
+    
     // $FlowFixMe
     return require(path); // eslint-disable-line security/detect-non-literal-require
 }
@@ -117,4 +126,49 @@ export function getLogBuffer(logger : LoggerType) : LoggerBufferType {
     return {
         debug, info, warn, error, flush
     };
+}
+
+export function placeholderToJSX(text : string, placeholders : { [string] : (?string) => NullableChildType }) : ChildType {
+    return regexTokenize(text, /(\{[a-z]+\})|([^{}]+)/g)
+        .map(token => {
+            const match = token.match(/^{([a-z]+)}$/);
+            if (match) {
+                return placeholders[match[1]]();
+            } else if (placeholders.text) {
+                return placeholders.text(token);
+            } else {
+                return token;
+            }
+        }).filter(Boolean);
+}
+
+export function isDefined(item : mixed) : boolean {
+    return (item !== null && typeof item !== 'undefined');
+}
+
+export function getCookieString(req : ExpressRequest) : string {
+    if (!req.cookies) {
+        return '';
+    }
+
+    return Object.keys(req.cookies).map(key => {
+        const value = req.cookies[key];
+        return `${ key }=${ value };`;
+    }).join('');
+}
+
+export function makeError(code : string, message : string, originalError? : Error) : Error {
+    if (originalError && originalError.stack) {
+        message = `${ message }\n\n${ originalError.stack }`;
+    }
+    const err = new Error(message);
+    // $FlowFixMe
+    err.code = code;
+    return err;
+}
+
+export function isError(error? : Error, ...codes : $ReadOnlyArray<string>) : boolean {
+    // $FlowFixMe
+    const errorCode = error && error.code;
+    return Boolean(errorCode && codes.some(code => (errorCode === code)));
 }

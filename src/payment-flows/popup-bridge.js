@@ -4,16 +4,16 @@ import { ZalgoPromise } from 'zalgo-promise/src';
 import { getDomain } from 'cross-domain-utils/src';
 import { extendUrl } from 'belter/src';
 
-import { EXPERIENCE_URI } from '../config';
+import { WEB_CHECKOUT_URI } from '../config';
 import { promiseNoop } from '../lib';
-import { POPUP_BRIDGE_OPTYPE, type Props } from '../button/props';
+import { POPUP_BRIDGE_OPTYPE } from '../props';
 import { USER_ACTION } from '../constants';
 
-import type { PaymentFlow, PaymentFlowInstance, Payment } from './types';
+import type { PaymentFlow, PaymentFlowInstance, SetupOptions, IsEligibleOptions, IsPaymentEligibleOptions, InitOptions } from './types';
 
 let parentPopupBridge;
 
-function setupPopupBridge({ props } : { props : Props }) : ZalgoPromise<void> {
+function setupPopupBridge({ props } : SetupOptions) : ZalgoPromise<void> {
     return ZalgoPromise.try(() => {
         const { getPopupBridge } = props;
         if (getPopupBridge) {
@@ -24,9 +24,18 @@ function setupPopupBridge({ props } : { props : Props }) : ZalgoPromise<void> {
     });
 }
 
-function isPopupBridgeEligible({ props, payment } : { props : Props, payment : Payment }) : boolean {
-    const { win } = payment;
+function isPopupBridgeEligible({ props } : IsEligibleOptions) : boolean {
     const { onShippingChange } = props;
+
+    if (onShippingChange) {
+        return false;
+    }
+
+    return true;
+}
+
+function isPopupBridgePaymentEligible({ payment } : IsPaymentEligibleOptions) : boolean {
+    const { win } = payment;
 
     if (win) {
         return false;
@@ -36,14 +45,10 @@ function isPopupBridgeEligible({ props, payment } : { props : Props, payment : P
         return false;
     }
 
-    if (onShippingChange) {
-        return false;
-    }
-
     return true;
 }
 
-function initPopupBridge({ props, payment } : { props : Props, payment : Payment }) : PaymentFlowInstance {
+function initPopupBridge({ props, payment } : InitOptions) : PaymentFlowInstance {
     const { createOrder, onApprove, onCancel, commit } = props;
     const { fundingSource } = payment;
 
@@ -53,12 +58,13 @@ function initPopupBridge({ props, payment } : { props : Props, payment : Payment
                 throw new Error(`Popup bridge required`);
             }
             
-            const url = extendUrl(`${ getDomain() }${ EXPERIENCE_URI.CHECKOUT }`, {
+            const url = extendUrl(`${ getDomain() }${ WEB_CHECKOUT_URI }`, {
                 query: {
                     fundingSource,
                     token:        orderID,
                     useraction:   commit ? USER_ACTION.COMMIT : USER_ACTION.CONTINUE,
-                    redirect_uri: parentPopupBridge.nativeUrl
+                    redirect_uri: parentPopupBridge.nativeUrl,
+                    native_xo:    '1'
                 }
             });
 
@@ -66,6 +72,10 @@ function initPopupBridge({ props, payment } : { props : Props, payment : Payment
 
         }).then(({ opType, PayerID: payerID, paymentId: paymentID, ba_token: billingToken }) => {
             if (opType === POPUP_BRIDGE_OPTYPE.PAYMENT) {
+                if (!payerID && !billingToken) {
+                    throw new Error(`Expected payerID to be passed`);
+                }
+
                 return onApprove({ payerID, paymentID, billingToken }, { restart: start });
             }
 
@@ -84,8 +94,10 @@ function initPopupBridge({ props, payment } : { props : Props, payment : Payment
 }
 
 export const popupBridge : PaymentFlow = {
-    setup:      setupPopupBridge,
-    isEligible: isPopupBridgeEligible,
-    init:       initPopupBridge,
-    spinner:    true
+    name:              'popup_bridge',
+    setup:             setupPopupBridge,
+    isEligible:        isPopupBridgeEligible,
+    isPaymentEligible: isPopupBridgePaymentEligible,
+    init:              initPopupBridge,
+    spinner:           true
 };

@@ -1,6 +1,6 @@
 {
   "name": "@paypal/smart-payment-buttons",
-  "version": "2.0.142",
+  "version": "2.0.260",
   "publishConfig": {
     "registry": "https://registry.npmjs.com"
   },
@@ -16,13 +16,13 @@
   "scripts": {
     "start": "babel-node ./server/devServer",
     "setup": "npm install && npm run flow-typed",
-    "lint": "eslint src/ server/ test/ *.js",
-    "flow-typed": "rm -rf ./flow-typed && flow-typed install --ignoreDeps peer && flow-typed install jest@22 mocha@3 && flow-typed install express@4.16 && sed -i -e 's/http$IncomingMessage,/http$IncomingMessage<>,/g' ./flow-typed/npm/express_v4.16.x.js",
+    "lint": "eslint --ext .js --ext .jsx src/ server/ test/ *.js",
+    "flow-typed": "rm -rf ./flow-typed && flow-typed install --ignoreDeps peer && flow-typed install jest@22 mocha@4 && flow-typed install express@4.16 && sed -i -e 's/http$IncomingMessage,/http$IncomingMessage<>,/g' ./flow-typed/npm/express_v4.16.x.js",
     "flow": "flow",
     "karma": "cross-env NODE_ENV=test babel-node --plugins=transform-es2015-modules-commonjs ./node_modules/.bin/karma start",
-    "babel": "babel server --exclude=node_modules --out-dir server && babel webpack.config.js --out-dir .",
+    "babel": "babel server --ignore=node_modules --out-dir server && babel webpack.config.js globals.js --out-dir .",
     "webpack": "babel-node --plugins=transform-es2015-modules-commonjs ./node_modules/.bin/webpack --progress",
-    "test": "if [ ! $SKIP_TEST ]; then npm run lint && npm run flow-typed && npm run flow && npm run karma && npm run jest; fi;",
+    "test": "if [ ! $SKIP_TEST ]; then npm run lint && npm run flow-typed && npm run flow check && npm run karma && npm run jest; fi;",
     "build": "npm run test && npm run webpack",
     "release": "./publish.sh",
     "release:patch": "./publish.sh patch",
@@ -31,31 +31,37 @@
     "clean": "rimraf dist coverage",
     "reinstall": "rimraf flow-typed && rimraf node_modules && npm install && flow-typed install",
     "debug": "cross-env NODE_ENV=debug",
-    "jest": "jest test/server --collectCoverage --env=node --no-cache",
+    "jest": "jest test/server --collectCoverage --collectCoverageFrom='server/' --env=node --no-cache --silent",
     "cover": "echo no-cover",
     "prepublish": "in-publish && npm run babel || not-in-publish",
-    "postpublish": "git checkout ."
+    "postpublish": "git clean -f && git checkout ."
   },
   "peerDependencies": {
     "express": "^4.16.3"
   },
   "dependencies": {
     "@paypal/checkout-components": "^5.0.30",
+    "@paypal/common-components": "^1.0.10",
     "@paypal/sdk-client": "^4.0.122",
     "@paypal/sdk-constants": "^1.0.52",
+    "@paypal/sdk-logos": "^1.0.26",
+    "beaver-logger": "^4.0.12",
     "belter": "^1.0.19",
     "cross-domain-utils": "^2.0.16",
     "grabthar": "^3",
     "jsx-pragmatic": "^2",
+    "preact": "^10",
+    "preact-render-to-string": "^5.1.4",
+    "strict-merge": "^1.0.1",
+    "typed-graphqlify": "^2.2.3",
     "zalgo-promise": "^1.0.28"
   },
   "devDependencies": {
     "babel-core": "^7.0.0-bridge.0",
     "express": "^4.16.3",
-    "flow-bin": "^0.100.0",
+    "flow-bin": "^0.110.1",
     "grumbler-scripts": "^3.0.18",
     "post-robot": "^10.0.13",
-    "preact": "10.0.0-rc.1",
     "sync-browser-mocks": "^2.0.1",
     "webpack-mem-compile": "^1.0.2"
   },

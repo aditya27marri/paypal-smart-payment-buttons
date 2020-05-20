@@ -1,26 +1,26 @@
 /* @flow */
 
 import type { ZalgoPromise } from 'zalgo-promise/src';
-import { FPTI_KEY, FUNDING } from '@paypal/sdk-constants/src';
-import { request, noop } from 'belter/src';
+import { FPTI_KEY, FUNDING, WALLET_INSTRUMENT, INTENT } from '@paypal/sdk-constants/src';
+import { request, noop, memoize } from 'belter/src';
 
 import { SMART_API_URI, ORDERS_API_URL, VALIDATE_PAYMENT_METHOD_API } from '../config';
 import { getLogger } from '../lib';
-import { FPTI_STATE, FPTI_TRANSITION, FPTI_CONTEXT_TYPE, HEADERS } from '../constants';
+import { FPTI_TRANSITION, FPTI_CONTEXT_TYPE, HEADERS } from '../constants';
 
 import { callSmartAPI, callGraphQL, callRestAPI } from './api';
 
 export type OrderCreateRequest = {|
     intent? : 'CAPTURE' | 'AUTHORIZE',
-        purchase_units : $ReadOnlyArray<{
-            amount : {
+        purchase_units : $ReadOnlyArray<{|
+            amount : {|
                 currency_code : string,
                 value : string
-            },
-            payee? : {
+            |},
+            payee? : {|
                 merchant_id? : string
-            }
-        }>
+            |}
+        |}>
 |};
 
 export type OrderResponse = {||};
@@ -31,7 +31,8 @@ export type OrderAuthorizeResponse = {||};
 type OrderAPIOptions = {|
     facilitatorAccessToken : string,
     buyerAccessToken? : ?string,
-    partnerAttributionID : ?string
+    partnerAttributionID : ?string,
+    forceRestAPI? : boolean
 |};
 
 export function createOrderID(order : OrderCreateRequest, { facilitatorAccessToken, partnerAttributionID } : OrderAPIOptions) : ZalgoPromise<string> {
@@ -54,7 +55,6 @@ export function createOrderID(order : OrderCreateRequest, { facilitatorAccessTok
         }
 
         getLogger().track({
-            [FPTI_KEY.STATE]:        FPTI_STATE.BUTTON,
             [FPTI_KEY.TRANSITION]:   FPTI_TRANSITION.CREATE_ORDER,
             [FPTI_KEY.CONTEXT_TYPE]: FPTI_CONTEXT_TYPE.ORDER_ID,
             [FPTI_KEY.TOKEN]:        orderID,
@@ -65,51 +65,60 @@ export function createOrderID(order : OrderCreateRequest, { facilitatorAccessTok
     });
 }
 
-export function getOrder(orderID : string, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID } : OrderAPIOptions) : ZalgoPromise<OrderResponse> {
-    return buyerAccessToken
-        ? callSmartAPI({
-            accessToken: buyerAccessToken,
-            url:         `${ SMART_API_URI.ORDER }/${ orderID }`
-        })
-        : callRestAPI({
+export function getOrder(orderID : string, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID, forceRestAPI = false } : OrderAPIOptions) : ZalgoPromise<OrderResponse> {
+    return forceRestAPI
+        ? callRestAPI({
             accessToken: facilitatorAccessToken,
             url:         `${ ORDERS_API_URL }/${ orderID }`,
             headers:     {
-                [ HEADERS.PARTNER_ATTRIBUTION_ID ]: partnerAttributionID || ''
+                [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
+            }
+        })
+        : callSmartAPI({
+            accessToken: buyerAccessToken,
+            url:         `${ SMART_API_URI.ORDER }/${ orderID }`,
+            headers:     {
+                [HEADERS.CLIENT_CONTEXT]:         orderID
             }
         });
 }
 
-export function captureOrder(orderID : string, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID } : OrderAPIOptions) : ZalgoPromise<OrderResponse> {
-    return buyerAccessToken
-        ? callSmartAPI({
-            accessToken: buyerAccessToken,
-            method:      'post',
-            url:         `${ SMART_API_URI.ORDER }/${ orderID }/capture`
-        })
-        : callRestAPI({
+export function captureOrder(orderID : string, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID, forceRestAPI = false } : OrderAPIOptions) : ZalgoPromise<OrderResponse> {
+    return forceRestAPI
+        ? callRestAPI({
             accessToken: facilitatorAccessToken,
             method:      `post`,
             url:         `${ ORDERS_API_URL }/${ orderID }/capture`,
             headers:     {
-                [ HEADERS.PARTNER_ATTRIBUTION_ID ]: partnerAttributionID || ''
+                [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
+            }
+        })
+        : callSmartAPI({
+            accessToken: buyerAccessToken,
+            method:      'post',
+            url:         `${ SMART_API_URI.ORDER }/${ orderID }/capture`,
+            headers:     {
+                [HEADERS.CLIENT_CONTEXT]: orderID
             }
         });
 }
 
-export function authorizeOrder(orderID : string, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID } : OrderAPIOptions) : ZalgoPromise<OrderResponse> {
-    return buyerAccessToken
-        ? callSmartAPI({
-            accessToken: buyerAccessToken,
-            method:      'post',
-            url:         `${ SMART_API_URI.ORDER }/${ orderID }/authorize`
-        })
-        : callRestAPI({
+export function authorizeOrder(orderID : string, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID, forceRestAPI = false } : OrderAPIOptions) : ZalgoPromise<OrderResponse> {
+    return forceRestAPI
+        ? callRestAPI({
             accessToken: facilitatorAccessToken,
             method:      `post`,
             url:         `${ ORDERS_API_URL }/${ orderID }/authorize`,
             headers:     {
-                [ HEADERS.PARTNER_ATTRIBUTION_ID ]: partnerAttributionID || ''
+                [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
+            }
+        })
+        : callSmartAPI({
+            accessToken: buyerAccessToken,
+            method:      'post',
+            url:         `${ SMART_API_URI.ORDER }/${ orderID }/authorize`,
+            headers:     {
+                [HEADERS.CLIENT_CONTEXT]: orderID
             }
         });
 }
@@ -118,23 +127,26 @@ type PatchData = {|
     
 |};
 
-export function patchOrder(orderID : string, data : PatchData, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID } : OrderAPIOptions) : ZalgoPromise<OrderResponse> {
+export function patchOrder(orderID : string, data : PatchData, { facilitatorAccessToken, buyerAccessToken, partnerAttributionID, forceRestAPI = false } : OrderAPIOptions) : ZalgoPromise<OrderResponse> {
     const patchData = Array.isArray(data) ? { patch: data } : data;
 
-    return buyerAccessToken
-        ? callSmartAPI({
-            accessToken: buyerAccessToken,
-            method:      'post',
-            url:         `${ SMART_API_URI.ORDER }/${ orderID }/patch`,
-            json:        { data: patchData }
-        })
-        : callRestAPI({
+    return forceRestAPI
+        ? callRestAPI({
             accessToken: facilitatorAccessToken,
             method:      `patch`,
             url:         `${ ORDERS_API_URL }/${ orderID }`,
             data:        patchData,
             headers:     {
-                [ HEADERS.PARTNER_ATTRIBUTION_ID ]: partnerAttributionID || ''
+                [HEADERS.PARTNER_ATTRIBUTION_ID]: partnerAttributionID || ''
+            }
+        })
+        : callSmartAPI({
+            accessToken: buyerAccessToken,
+            method:      'post',
+            url:         `${ SMART_API_URI.ORDER }/${ orderID }/patch`,
+            json:        { data: patchData },
+            headers:     {
+                [HEADERS.CLIENT_CONTEXT]: orderID
             }
         });
 }
@@ -147,7 +159,10 @@ type PayeeResponse = {|
 
 export function getPayee(orderID : string) : ZalgoPromise<PayeeResponse> {
     return callSmartAPI({
-        url: `${ SMART_API_URI.CHECKOUT }/${ orderID }/payee`
+        url:     `${ SMART_API_URI.CHECKOUT }/${ orderID }/payee`,
+        headers: {
+            [HEADERS.CLIENT_CONTEXT]: orderID
+        }
     });
 }
 
@@ -157,7 +172,7 @@ export type ValidatePaymentMethodOptions = {|
     paymentMethodID : string,
     enableThreeDomainSecure : boolean,
     partnerAttributionID : ?string,
-    buttonSessionID : string
+    clientMetadataID : string
 |};
 
 const VALIDATE_CONTINGENCIES = {
@@ -178,13 +193,13 @@ type PaymentSource = {|
     contingencies? : $ReadOnlyArray<$Values<typeof VALIDATE_CONTINGENCIES>>
 |};
 
-export function validatePaymentMethod({ clientAccessToken, orderID, paymentMethodID, enableThreeDomainSecure, partnerAttributionID, buttonSessionID } : ValidatePaymentMethodOptions) : ZalgoPromise<{ status : number, body : ValidatePaymentMethodResponse, headers : { [string] : string } }> {
+export function validatePaymentMethod({ clientAccessToken, orderID, paymentMethodID, enableThreeDomainSecure, partnerAttributionID, clientMetadataID } : ValidatePaymentMethodOptions) : ZalgoPromise<{| status : number, body : ValidatePaymentMethodResponse, headers : { [string] : string } |}> {
     getLogger().info(`rest_api_create_order_token`);
 
     const headers : Object = {
         [ HEADERS.AUTHORIZATION ]:          `Bearer ${ clientAccessToken }`,
         [ HEADERS.PARTNER_ATTRIBUTION_ID ]: partnerAttributionID,
-        [ HEADERS.CLIENT_METADATA_ID ]:     buttonSessionID
+        [ HEADERS.CLIENT_METADATA_ID ]:     clientMetadataID
     };
 
     const paymentSource : PaymentSource = {
@@ -228,8 +243,9 @@ export function subscriptionIdToCartId(subscriptionID : string) : ZalgoPromise<s
     });
 }
 
-export function enableVault({ orderID, clientAccessToken } : { orderID : string, clientAccessToken : string }) : ZalgoPromise<mixed> {
+export function enableVault({ orderID, clientAccessToken } : {| orderID : string, clientAccessToken : string |}) : ZalgoPromise<mixed> {
     return callGraphQL({
+        name:  'EnableVault',
         query: `
             mutation EnableVault(
                 $orderID : String!
@@ -243,13 +259,15 @@ export function enableVault({ orderID, clientAccessToken } : { orderID : string,
             orderID
         },
         headers: {
-            [ HEADERS.ACCESS_TOKEN ]: clientAccessToken
+            [ HEADERS.ACCESS_TOKEN ]:   clientAccessToken,
+            [ HEADERS.CLIENT_CONTEXT ]: orderID
         }
     });
 }
 
-export function deleteVault({ paymentMethodID, clientAccessToken } : { paymentMethodID : string, clientAccessToken : string }) : ZalgoPromise<mixed> {
+export function deleteVault({ paymentMethodID, clientAccessToken } : {| paymentMethodID : string, clientAccessToken : string |}) : ZalgoPromise<mixed> {
     return callGraphQL({
+        name:  'DeleteVault',
         query: `
             mutation DeleteVault(
                 $paymentMethodID : String!
@@ -278,6 +296,7 @@ type ClientConfig = {|
 
 export function updateClientConfig({ orderID, fundingSource, integrationArtifact, userExperienceFlow, productFlow } : ClientConfig) : ZalgoPromise<void> {
     return callGraphQL({
+        name:  'UpdateClientConfig',
         query: `
             mutation UpdateClientConfig(
                 $orderID : String!,
@@ -295,6 +314,146 @@ export function updateClientConfig({ orderID, fundingSource, integrationArtifact
                 )
             }
         `,
-        variables: { orderID, fundingSource, integrationArtifact, userExperienceFlow, productFlow }
+        variables: { orderID, fundingSource, integrationArtifact, userExperienceFlow, productFlow },
+        headers:   {
+            [HEADERS.CLIENT_CONTEXT]: orderID
+        }
     }).then(noop);
 }
+
+type ApproveOrderOptions = {|
+    orderID : string,
+    planID : string,
+    buyerAccessToken : string
+|};
+
+type ApproveData = {|
+    payerID : string
+|};
+
+export function approveOrder({ orderID, planID, buyerAccessToken } : ApproveOrderOptions) : ZalgoPromise<ApproveData> {
+    return callGraphQL({
+        name:  'ApproveOrder',
+        query: `
+            mutation ApproveOrder(
+                $orderID : String!
+                $planID : String!
+            ) {
+                approvePayment(
+                    token: $orderID
+                    selectedPlanId: $planID
+                ) {
+                    buyer {
+                        userId
+                    }
+                }
+            }
+        `,
+        variables: { orderID, planID },
+        headers:   {
+            [ HEADERS.ACCESS_TOKEN ]:   buyerAccessToken,
+            [ HEADERS.CLIENT_CONTEXT ]: orderID
+        }
+    }).then(({ approvePayment }) => {
+        return {
+            payerID: approvePayment.buyer.userId
+        };
+    });
+}
+
+type OneClickApproveOrderOptions = {|
+    orderID : string,
+    instrumentType : $Values<typeof WALLET_INSTRUMENT>,
+    instrumentID : string,
+    buyerAccessToken : string,
+    clientMetadataID : ?string
+|};
+
+export function oneClickApproveOrder({ orderID, instrumentType, instrumentID, buyerAccessToken, clientMetadataID } : OneClickApproveOrderOptions) : ZalgoPromise<ApproveData> {
+    return callGraphQL({
+        name:  'OneClickApproveOrder',
+        query: `
+            mutation OneClickApproveOrder(
+                $orderID : String!
+                $instrumentType : String!
+                $instrumentID : String!
+            ) {
+                oneClickPayment(
+                    token: $orderID
+                    selectedInstrumentType : $instrumentType
+                    selectedInstrumentId : $instrumentID
+                ) {
+                    userId
+                }
+            }
+        `,
+        variables: { orderID, instrumentType, instrumentID },
+        headers:   {
+            [HEADERS.ACCESS_TOKEN]:       buyerAccessToken,
+            [HEADERS.CLIENT_CONTEXT]:     orderID,
+            [HEADERS.CLIENT_METADATA_ID]: clientMetadataID || orderID
+        }
+    }).then(({ oneClickPayment }) => {
+        return {
+            payerID: oneClickPayment.userId
+        };
+    });
+}
+
+type SupplementalOrderInfo = {|
+    checkoutSession : {|
+        cart : {|
+            intent : $Values<typeof INTENT>,
+            paymentId? : ?string,
+            billingToken? : ?string,
+            amounts? : {|
+                total : {|
+                    currencyCode : string
+                |}
+            |},
+            shippingAddress? : {|
+                isFullAddress? : boolean
+            |}
+        |},
+        buyer? : {|
+            userId? : string
+        |},
+        flags : {|
+            isShippingAddressRequired? : boolean
+        |}
+    |}
+|};
+
+export const getSupplementalOrderInfo = memoize((orderID : string) : ZalgoPromise<SupplementalOrderInfo> => {
+    return callGraphQL({
+        name:  'GetCheckoutDetails',
+        query: `
+            query GetCheckoutDetails($orderID: String!) {
+                checkoutSession(token: $orderID) {
+                    cart {
+                        intent
+                        paymentId
+                        billingToken
+                        amounts {
+                            total {
+                                currencyCode
+                            }
+                        }
+                        shippingAddress {
+                            isFullAddress
+                        }
+                    }
+                    flags {
+                        hideShipping
+                        isShippingAddressRequired
+                        isChangeShippingAddressAllowed
+                    }
+                }
+            }
+        `,
+        variables: { orderID },
+        headers:   {
+            [HEADERS.CLIENT_CONTEXT]: orderID
+        }
+    });
+});
