@@ -66,11 +66,13 @@ export type MessageSocketOptions = {|
 export type MessageSocket = {|
     on : <T, R>( // eslint-disable-line no-undef
         name : string,
-        handler : ({ data : T }) => ZalgoPromise<R> | R, // eslint-disable-line no-undef
+        handler : ({| data : T |}) => ZalgoPromise<R> | R, // eslint-disable-line no-undef
         opts? : {|
             requireSessionUID? : boolean
         |}
-    ) => void,
+    ) => {|
+        cancel : () => void
+    |},
     send : <T, R>( // eslint-disable-line no-undef
         name : string,
         data : T, // eslint-disable-line no-undef
@@ -79,6 +81,7 @@ export type MessageSocket = {|
             requireSessionUID? : boolean
         |}
     ) => ZalgoPromise<R>, // eslint-disable-line no-undef
+    onError : ((mixed) => void) => void,
     reconnect : () => ZalgoPromise<void>,
     close : () => void
 |};
@@ -86,15 +89,18 @@ export type MessageSocket = {|
 export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion, targetApp, retry = true } : MessageSocketOptions) : MessageSocket {
 
     const receivedMessages = {};
-    const requestListeners = {};
     const responseListeners = {};
     const activeRequests = [];
+
+    let requestListeners = {};
+    let errorListeners = [];
 
     const sendMessage = (socket, data) => {
         const messageUID = uniqueID();
         receivedMessages[messageUID] = true;
 
         const message = {
+            session_uid:        sessionUID,
             message_uid:        messageUID,
             source_app:         sourceApp,
             source_app_version: sourceAppVersion,
@@ -105,13 +111,12 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
         socket.send(JSON.stringify(message));
     };
 
-    const sendResponse = (socket, { messageName, responseStatus, responseData, messageSessionUID, requestUID }) => {
+    const sendResponse = (socket, { messageName, responseStatus, responseData, requestUID }) => {
         if (!socket.isOpen()) {
             return;
         }
         
         return sendMessage(socket, {
-            session_uid:        messageSessionUID,
             request_uid:        requestUID,
             message_name:       messageName,
             message_status:     responseStatus,
@@ -121,7 +126,10 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
     };
 
     const onRequest = (socket, { messageSessionUID, requestUID, messageName, messageData }) => {
-        const requestPromise = ZalgoPromise.try(() => {
+        const activeRequest = new ZalgoPromise();
+        activeRequests.push(activeRequest);
+
+        return ZalgoPromise.try(() => {
             const requestListener = requestListeners[messageName];
 
             if (!requestListener) {
@@ -136,25 +144,21 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
 
             return handler({ data: messageData });
         }).then(res => {
-            sendResponse(socket, { responseStatus: RESPONSE_STATUS.SUCCESS, responseData: res, messageName, messageSessionUID, requestUID  });
+            sendResponse(socket, { responseStatus: RESPONSE_STATUS.SUCCESS, responseData: res, messageName, requestUID  });
         }, err => {
             const res = { message: (err && err.message) ? err.message : 'Unknown error' };
             sendResponse(socket, { responseStatus: RESPONSE_STATUS.ERROR, responseData: res, messageName, messageSessionUID, requestUID });
+        }).finally(() => {
+            activeRequest.resolve();
+            activeRequests.splice(activeRequests.indexOf(activeRequest), 1);
         });
-
-        activeRequests.push(requestPromise);
-        requestPromise.finally(() => {
-            activeRequests.splice(activeRequests.indexOf(requestPromise), 1);
-        });
-
-        return requestPromise;
     };
 
-    const onResponse = ({ requestUID, messageSessionUID, responseStatus, messageData }) => {
-        const { listenerPromise, requireSessionUID } = responseListeners[requestUID];
+    const onResponse = ({ messageName, requestUID, messageSessionUID, responseStatus, messageData }) => {
+        const { listenerPromise, requireSessionUID } = responseListeners[requestUID] || {};
         
         if (!listenerPromise) {
-            throw new Error(`Could not find response listener with id: ${ requestUID }`);
+            throw new Error(`Could not find response listener for ${ messageName } with id: ${ requestUID }`);
         }
 
         if (requireSessionUID && messageSessionUID !== sessionUID) {
@@ -185,7 +189,7 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
             throw new Error(`No data passed from socket message`);
         }
     
-        const {
+        let {
             session_uid:    messageSessionUID,
             request_uid:    requestUID,
             message_uid:    messageUID,
@@ -196,12 +200,14 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
             target_app:     messageTargetApp
         } = parsedData;
 
-        if (!messageUID || !requestUID || !messageName || !messageType || !messageTargetApp) {
-            throw new Error(`Incomplete message: ${ rawData }`);
+        requestUID = requestUID || parsedData.request_id;
+
+        if (messageUID && receivedMessages[messageUID]) {
+            return;
         }
 
-        if (receivedMessages[messageUID] || messageTargetApp !== sourceApp) {
-            return;
+        if (!messageUID || !requestUID || !messageName || !messageType || !messageTargetApp) {
+            throw new Error(`Incomplete message: ${ rawData }`);
         }
 
         receivedMessages[messageUID] = true;
@@ -209,7 +215,7 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
         if (messageType === MESSAGE_TYPE.REQUEST) {
             return onRequest(socket, { messageSessionUID, requestUID, messageName, messageData });
         } else if (messageType === MESSAGE_TYPE.RESPONSE) {
-            return onResponse({ requestUID, messageSessionUID, responseStatus, messageData });
+            return onResponse({ messageName, requestUID, messageSessionUID, responseStatus, messageData });
         
         } else {
             throw new Error(`Unhandleable message type: ${ messageType }`);
@@ -256,6 +262,10 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
         
                 instance.onError(err => {
                     reject(err);
+
+                    for (const errorListener of errorListeners) {
+                        errorListener(err);
+                    }
                 });
             });
 
@@ -281,6 +291,12 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
         requestListeners[name] = {
             handler,
             requireSessionUID
+        };
+
+        return {
+            cancel: () => {
+                delete requestListeners[name];
+            }
         };
     };
 
@@ -330,6 +346,9 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
     const close = () => {
         retry = false;
 
+        requestListeners = {};
+        errorListeners = [];
+
         for (const requestUID of Object.keys(responseListeners)) {
             const { listenerPromise } = responseListeners[requestUID];
             listenerPromise.asyncReject(new Error(`Socket closed`));
@@ -343,7 +362,11 @@ export function messageSocket({ sessionUID, driver, sourceApp, sourceAppVersion,
         });
     };
 
-    return { on, send, reconnect, close };
+    const onError = (handler) => {
+        errorListeners.push(handler);
+    };
+        
+    return { on, send, onError, reconnect, close };
 }
 
 type WebSocketOptions = {|
@@ -415,12 +438,39 @@ export type FirebaseSocketOptions = {|
     targetApp : string
 |};
 
-export const loadFirebaseSDK = memoize((config) => {
-    return ZalgoPromise.all([
-        loadScript(FIREBASE_SCRIPTS.APP),
-        loadScript(FIREBASE_SCRIPTS.AUTH),
-        loadScript(FIREBASE_SCRIPTS.DATABASE)
-    ]).then(() => {
+type FirebaseSDK = {|
+    initializeApp : (FirebaseConfig) => void,
+    auth : () => {|
+        signInWithCustomToken : (string) => ZalgoPromise<void>
+    |},
+    database : {|
+        INTERNAL : {|
+            forceWebSockets : () => void
+        |},
+        () : {|
+            ref : (string) => {|
+                // eslint-disable-next-line no-undef
+                set : <T>(T) => void,
+                // eslint-disable-next-line no-undef
+                on : <T>('value', (T) => void, (Error) => void) => void
+            |},
+            goOnline : () => void,
+            goOffline : () => void
+        |}
+    |}
+|};
+            
+export const loadFirebaseSDK = memoize((config : FirebaseConfig) : ZalgoPromise<FirebaseSDK> => {
+    return ZalgoPromise.try(() => {
+        if (!window.firebase || !window.firebase.auth || !window.firebase.database) {
+            return loadScript(FIREBASE_SCRIPTS.APP).then(() => {
+                return ZalgoPromise.all([
+                    loadScript(FIREBASE_SCRIPTS.AUTH),
+                    loadScript(FIREBASE_SCRIPTS.DATABASE)
+                ]);
+            });
+        }
+    }).then(() => {
         const firebase = window.firebase;
 
         if (!firebase) {
@@ -447,10 +497,10 @@ export function firebaseSocket({ sessionUID, config, sourceApp, sourceAppVersion
             }
         };
 
-        const databasePromise = ZalgoPromise.all([
-            loadFirebaseSDK(config),
-            getFirebaseSessionToken(sessionUID)
-        ]).then(([ firebase, sessionToken ]) => {
+        const databasePromise = ZalgoPromise.hash({
+            firebase:     loadFirebaseSDK(config),
+            sessionToken: getFirebaseSessionToken(sessionUID)
+        }).then(({ firebase, sessionToken }) => {
             return firebase.auth().signInWithCustomToken(sessionToken).then(() => {
                 const database = firebase.database();
                 firebase.database.INTERNAL.forceWebSockets();
@@ -469,11 +519,16 @@ export function firebaseSocket({ sessionUID, config, sourceApp, sourceAppVersion
                             handler(message);
                         }
                     }
+                }, err => {
+                    error(err);
                 });
 
+                database.goOnline();
                 return database;
             });
         });
+
+        databasePromise.catch(noop);
 
         return {
             send: (data) => {

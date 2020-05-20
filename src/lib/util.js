@@ -77,3 +77,19 @@ export function loadScript(url : string) : ZalgoPromise<string> {
         container.appendChild(script);
     });
 }
+
+export function promiseOne<T>(promises : $ReadOnlyArray<ZalgoPromise<T>>) : ZalgoPromise<T> {
+    return new ZalgoPromise((resolve, reject) => {
+        for (const promise of promises) {
+            promise.then(resolve, reject);
+        }
+    });
+}
+
+export function isServer() : boolean {
+    return (typeof window === 'undefined');
+}
+
+export function isClient() : boolean {
+    return (typeof window !== 'undefined');
+}

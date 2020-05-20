@@ -7,6 +7,7 @@ type MockReq = {|
 
 export function mockReq(opts : Object = {}) : MockReq {
     return {
+        url:     '/',
         query:   {},
         headers: {
             'user-agent': 'xyz'
@@ -64,8 +65,29 @@ export function mockRes(opts : Object = {}) : MockRes {
     };
 }
 
+export async function getWallet() : Promise<Object> {
+    return await {
+        'funding_options': [
+            {
+                'funding_sources': [
+                    {
+                        'primary_instrument': false,
+                        'credit':             {
+                            'id':   'BC-YMBX4GJLEKMQW',
+                            'type': 'BILL_ME_LATER'
+                        },
+                        'one_click_eligibility': {
+                            eligible: false
+                        }
+                    }
+                ]
+            }
+        ]
+    };
+}
+
 // eslint-disable-next-line require-await
-export async function graphQL(req : {}, payload : $ReadOnlyArray<{ query : string, variables : Object }>) : Promise<Object> {
+export async function graphQL(req : {||}, payload : $ReadOnlyArray<{| query : string, variables : Object |}>) : Promise<Object> {
     return Promise.resolve(payload.map(request => {
         if (request.query.match(/FundingEligibility/)) {
             return {
@@ -146,6 +168,15 @@ export async function graphQL(req : {}, payload : $ReadOnlyArray<{ query : strin
                     trustly: {
                         eligible: false
                     },
+                    oxxo: {
+                        eligible: false
+                    },
+                    maxima: {
+                        eligible: false
+                    },
+                    boleto: {
+                        eligible: false
+                    },
                     mercadopago: {
                         eligible: false
                     }
@@ -185,3 +216,22 @@ export function getAccessToken() : Promise<string> {
 export function getMerchantID() : Promise<string> {
     return Promise.resolve('ABCDEF12345');
 }
+
+export function transportRiskData() : Promise<void> {
+    return Promise.resolve();
+}
+
+export const mockContent = {
+    US: {
+        en: {
+            instantlyPayWith:     'Pay instantly with',
+            poweredBy:            'Powered by PayPal',
+            chooseCardOrShipping: 'Choose card or shipping',
+            useDifferentAccount:  'Use different account',
+            deleteVaultedAccount: 'Forget this account',
+            deleteVaultedCard:    'Forget this card',
+            chooseCard:           'Choose card',
+            balance:              'Balance'
+        }
+    }
+};

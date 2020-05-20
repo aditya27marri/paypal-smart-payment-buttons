@@ -13,9 +13,9 @@ describe('client config cases', () => {
             let clientConfigCalled = false;
 
             const gqlMock = getGraphQLApiMock({
-                handler: expect('clientConfigCall', ({ data }) => {
+                extraHandler: expect('clientConfigCall', ({ data }) => {
                     if (!data.query.includes('mutation UpdateClientConfig')) {
-                        return {};
+                        return;
                     }
 
                     if (!data.variables.orderID) {
@@ -62,9 +62,9 @@ describe('client config cases', () => {
             let clientConfigCalled = false;
 
             const gqlMock = getGraphQLApiMock({
-                handler: expect('clientConfigCall', ({ data }) => {
+                extraHandler: expect('clientConfigCall', ({ data }) => {
                     if (!data.query.includes('mutation UpdateClientConfig')) {
-                        return {};
+                        return;
                     }
 
                     if (!data.variables.orderID) {
@@ -107,11 +107,11 @@ describe('client config cases', () => {
                 }
             };
 
-            createButtonHTML(fundingEligibility);
+            createButtonHTML({ fundingEligibility });
 
             await mockSetupButton({ merchantID: [ 'XYZ12345' ], fundingEligibility });
 
-            await clickButton(FUNDING.CARD, CARD.VISA);
+            await clickButton(FUNDING.CARD);
         });
     });
 
@@ -123,9 +123,9 @@ describe('client config cases', () => {
             let clientConfigCalled = false;
 
             const gqlMock = getGraphQLApiMock({
-                handler: expect('clientConfigCall', ({ data }) => {
+                extraHandler: expect('clientConfigCall', ({ data }) => {
                     if (!data.query.includes('mutation UpdateClientConfig')) {
-                        return {};
+                        return;
                     }
 
                     if (data.variables.fundingSource !== fundingSource) {
@@ -151,7 +151,7 @@ describe('client config cases', () => {
                 }
             };
 
-            createButtonHTML(fundingEligibility);
+            createButtonHTML({ fundingEligibility });
 
             await mockSetupButton({ merchantID: [ 'XYZ12345' ], fundingEligibility });
 
@@ -166,9 +166,9 @@ describe('client config cases', () => {
             let clientConfigCalled = false;
 
             const gqlMock = getGraphQLApiMock({
-                handler: expect('clientConfigCall', ({ data }) => {
+                extraHandler: expect('clientConfigCall', ({ data }) => {
                     if (!data.query.includes('mutation UpdateClientConfig')) {
-                        return {};
+                        return;
                     }
 
                     if (data.variables.fundingSource !== fundingSource) {
@@ -194,7 +194,7 @@ describe('client config cases', () => {
                 }
             };
 
-            createButtonHTML(fundingEligibility);
+            createButtonHTML({ fundingEligibility });
 
             await mockSetupButton({ merchantID: [ 'XYZ12345' ], fundingEligibility });
 
@@ -209,9 +209,9 @@ describe('client config cases', () => {
             let clientConfigCalled = false;
 
             const gqlMock = getGraphQLApiMock({
-                handler: expect('clientConfigCall', ({ data }) => {
+                extraHandler: expect('clientConfigCall', ({ data }) => {
                     if (!data.query.includes('mutation UpdateClientConfig')) {
-                        return {};
+                        return;
                     }
 
                     if (data.variables.fundingSource !== fundingSource) {
@@ -237,7 +237,7 @@ describe('client config cases', () => {
                 }
             };
 
-            createButtonHTML(fundingEligibility);
+            createButtonHTML({ fundingEligibility });
 
             await mockSetupButton({ merchantID: [ 'XYZ12345' ], fundingEligibility });
 

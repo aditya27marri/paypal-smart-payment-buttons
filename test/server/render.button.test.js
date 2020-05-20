@@ -1,11 +1,11 @@
 /* @flow */
 
-import { regexMap } from 'belter';
+import { regexMap, noop } from 'belter';
 import { FUNDING } from '@paypal/sdk-constants';
 
 import { getButtonMiddleware, cancelWatchers } from '../../server';
 
-import { mockReq, mockRes, graphQL, getAccessToken, getMerchantID } from './mock';
+import { mockReq, mockRes, graphQL, getAccessToken, getMerchantID, mockContent, getWallet, transportRiskData } from './mock';
 
 function getRenderedFundingSources(template) : $ReadOnlyArray<string> {
     return regexMap(template, / data-funding-source="([^"]+)"/g, (result, group1) => group1);
@@ -15,7 +15,20 @@ jest.setTimeout(300000);
 
 afterAll(cancelWatchers);
 
-const buttonMiddleware = getButtonMiddleware({ graphQL, getAccessToken, getMerchantID });
+const cache = {
+    // eslint-disable-next-line no-unused-vars
+    get: (key) => Promise.resolve(),
+    set: (key, value) => Promise.resolve(value)
+};
+
+const logger = {
+    debug: noop,
+    info:  noop,
+    warn:  noop,
+    error: noop
+};
+
+const buttonMiddleware = getButtonMiddleware({ graphQL, getAccessToken, getMerchantID, getWallet, transportRiskData, content: mockContent, cache, logger });
 
 test('should do a basic button render and succeed', async () => {
 
@@ -82,15 +95,14 @@ test('should do a basic button render and succeed when graphql fundingEligibilit
     const res = mockRes();
     
     const errButtonMiddleware = getButtonMiddleware({
-        graphQL: () => {
-            throw new Error('error');
-        },
-        getAccessToken: () => {
-            return Promise.resolve('ABC123');
-        },
-        getMerchantID: () => {
-            return Promise.resolve('ABC123');
-        }
+        graphQL,
+        getWallet,
+        getAccessToken,
+        getMerchantID,
+        transportRiskData,
+        content: mockContent,
+        cache,
+        logger
     });
     // $FlowFixMe
     await errButtonMiddleware(req, res);

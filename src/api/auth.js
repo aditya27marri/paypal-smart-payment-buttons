@@ -2,19 +2,32 @@
 
 import { ZalgoPromise } from 'zalgo-promise/src';
 import { inlineMemoize, base64encode, request, noop } from 'belter/src';
+import { FUNDING } from '@paypal/sdk-constants/src';
 
+import type { ConnectOptions } from '../types';
 import { AUTH_API_URL } from '../config';
 import { getLogger } from '../lib';
 import { HEADERS } from '../constants';
 
 import { callGraphQL } from './api';
 
-export function createAccessToken (clientID : string) : ZalgoPromise<string> {
+type GenerateAccessTokenOptions = {|
+    targetSubject? : string
+|};
+
+export function createAccessToken(clientID : ?string, { targetSubject } : GenerateAccessTokenOptions = {}) : ZalgoPromise<string> {
     return inlineMemoize(createAccessToken, () => {
 
         getLogger().info(`rest_api_create_access_token`);
 
-        const basicAuth = base64encode(`${ clientID }:`);
+        const basicAuth = base64encode(`${ clientID || '' }:`);
+        const data : Object = {
+            grant_type: `client_credentials`
+        };
+
+        if (targetSubject) {
+            data.target_subject = targetSubject;
+        }
 
         return request({
 
@@ -23,14 +36,12 @@ export function createAccessToken (clientID : string) : ZalgoPromise<string> {
             headers: {
                 Authorization: `Basic ${ basicAuth }`
             },
-            data: {
-                grant_type: `client_credentials`
-            }
+            data
 
         }).then(({ body }) => {
 
             if (body && body.error === 'invalid_client') {
-                throw new Error(`Auth Api invalid client id: ${ clientID }:\n\n${ JSON.stringify(body, null, 4) }`);
+                throw new Error(`Auth Api invalid client id: ${ clientID || '' }:\n\n${ JSON.stringify(body, null, 4) }`);
             }
 
             if (!body || !body.access_token) {
@@ -39,11 +50,12 @@ export function createAccessToken (clientID : string) : ZalgoPromise<string> {
 
             return body.access_token;
         });
-    }, [ clientID ]);
+    }, [ clientID, targetSubject ]);
 }
 
 export function getFirebaseSessionToken(sessionUID : string) : ZalgoPromise<string> {
     return callGraphQL({
+        name:  'GetFireBaseSessionToken',
         query: `
             query GetFireBaseSessionToken($sessionUID: String!) {
                 firebase {
@@ -59,10 +71,12 @@ export function getFirebaseSessionToken(sessionUID : string) : ZalgoPromise<stri
     });
 }
 
-export function upgradeFacilitatorAccessToken(facilitatorAccessToken : string, { buyerAccessToken, orderID } : { buyerAccessToken : string, orderID : string }) : ZalgoPromise<void> {
+export function upgradeFacilitatorAccessToken(facilitatorAccessToken : string, { buyerAccessToken, orderID } : {| buyerAccessToken : string, orderID : string |}) : ZalgoPromise<void> {
     return callGraphQL({
+        name:    'UpgradeFacilitatorAccessToken',
         headers: {
-            [ HEADERS.ACCESS_TOKEN ]: buyerAccessToken
+            [ HEADERS.ACCESS_TOKEN ]:   buyerAccessToken,
+            [ HEADERS.CLIENT_CONTEXT ]: orderID
         },
         query: `
             mutation UpgradeFacilitatorAccessToken(
@@ -79,4 +93,64 @@ export function upgradeFacilitatorAccessToken(facilitatorAccessToken : string, {
         `,
         variables: { facilitatorAccessToken, buyerAccessToken, orderID }
     }).then(noop);
+}
+
+export function exchangeAccessTokenForAuthCode(buyerAccessToken : string) : ZalgoPromise<string> {
+    return callGraphQL({
+        name:  'ExchangeAuthCode',
+        query: `
+            query ExchangeAuthCode(
+                $buyerAccessToken: String!
+            ) {
+                auth(
+                    accessToken: $buyerAccessToken
+                ) {
+                    authCode
+                }
+            }
+        `,
+        variables: { buyerAccessToken }
+    }).then(({ auth }) => {
+        return auth.authCode;
+    });
+}
+
+type ConnectURLOptions = {|
+    clientID : string,
+    orderID : string,
+    fundingSource : $Values<typeof FUNDING>,
+    connect : ConnectOptions
+|};
+
+export function getConnectURL({ clientID, orderID, fundingSource, connect } : ConnectURLOptions) : ZalgoPromise<string> {
+    const { scopes, billingType } = connect;
+
+    return callGraphQL({
+        name:  'GetConnectURL',
+        query: `
+            query GetConnectURL(
+                $clientID: String!
+                $orderID: String!
+                $scopes: [String]!
+                $billingType: String
+                $fundingSource: String
+            ) {
+                auth(
+                    clientId: $clientID
+                ) {
+                    connectUrl(
+                        token: $orderID
+                        scopes: $scopes
+                        billingType: $billingType
+                        fundingSource: $fundingSource
+                    ) {
+                        href
+                    }
+                }
+            }
+        `,
+        variables: { clientID, orderID, scopes, billingType, fundingSource }
+    }).then(({ auth }) => {
+        return auth.connectUrl.href;
+    });
 }

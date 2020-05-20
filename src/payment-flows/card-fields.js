@@ -2,13 +2,12 @@
 
 import { ZalgoPromise } from 'zalgo-promise/src';
 import { FUNDING, CARD } from '@paypal/sdk-constants/src';
-import { memoize, querySelectorAll, debounce } from 'belter/src';
+import { memoize, querySelectorAll, debounce, noop } from 'belter/src';
 
-import type { Props, Config, ServiceData, Components } from '../button/props';
 import { DATA_ATTRIBUTES } from '../constants';
 import { unresolvedPromise, promiseNoop } from '../lib';
 
-import type { Payment, PaymentFlow, PaymentFlowInstance } from './types';
+import type { PaymentFlow, PaymentFlowInstance, IsEligibleOptions, IsPaymentEligibleOptions, InitOptions } from './types';
 import { checkout } from './checkout';
 
 function setupCardFields() {
@@ -17,18 +16,9 @@ function setupCardFields() {
 
 let cardFieldsOpen = false;
 
-function isCardFieldsEligible({ props, payment, serviceData } : { props : Props, payment : Payment, serviceData : ServiceData }) : boolean {
+function isCardFieldsEligible({ props, serviceData } : IsEligibleOptions) : boolean {
     const { vault, onShippingChange, enableStandardCardFields } = props;
-    const { win, fundingSource } = payment;
     const { eligibility } = serviceData;
-
-    if (win) {
-        return false;
-    }
-
-    if (fundingSource !== FUNDING.CARD) {
-        return false;
-    }
 
     if (vault) {
         return false;
@@ -46,7 +36,24 @@ function isCardFieldsEligible({ props, payment, serviceData } : { props : Props,
     return eligibility.cardFields;
 }
 
-function highlightCard(card : $Values<typeof CARD>) {
+function isCardFieldsPaymentEligible({ payment } : IsPaymentEligibleOptions) : boolean {
+    const { win, fundingSource } = payment || {};
+
+    if (win) {
+        return false;
+    }
+
+    if (fundingSource && fundingSource !== FUNDING.CARD) {
+        return false;
+    }
+
+    return true;
+}
+
+function highlightCard(card : ?$Values<typeof CARD>) {
+    if (!card) {
+        return;
+    }
     querySelectorAll(`[${ DATA_ATTRIBUTES.CARD }]`).forEach(el => {
         el.style.opacity = (el.getAttribute(DATA_ATTRIBUTES.CARD) === card) ? '1' : '0.1';
     });
@@ -58,9 +65,9 @@ function unhighlightCards() {
     });
 }
 
-const getElements = () : { buttonsContainer : HTMLElement, cardButtonsContainer : HTMLElement, cardFieldsContainer : HTMLElement } => {
+const getElements = () : {| buttonsContainer : HTMLElement, cardButtonsContainer : HTMLElement, cardFieldsContainer : HTMLElement |} => {
     const buttonsContainer = document.querySelector('#buttons-container');
-    const cardButtonsContainer = document.querySelector(`[data-funding-source="${ FUNDING.CARD }"]`);
+    const cardButtonsContainer = document.querySelector(`[${ DATA_ATTRIBUTES.FUNDING_SOURCE }="${ FUNDING.CARD }"]`);
     const cardFieldsContainer = document.querySelector('#card-fields-container');
 
     if (!buttonsContainer || !cardButtonsContainer || !cardFieldsContainer) {
@@ -99,17 +106,13 @@ const slideDownButtons = () => {
     buttonsContainer.style.marginTop = `0px`;
 };
 
-function initCardFields({ props, components, payment, serviceData, config } : { props : Props, config : Config, components : Components, payment : Payment, serviceData : ServiceData }) : PaymentFlowInstance {
+function initCardFields({ props, components, payment, serviceData, config } : InitOptions) : PaymentFlowInstance {
     const { createOrder, onApprove, onCancel,
-        locale, commit, onError, buttonSessionID } = props;
+        locale, commit, onError, sessionID, buttonSessionID } = props;
     const { CardFields } = components;
     const { fundingSource, card } = payment;
     const { cspNonce } = config;
     const { buyerCountry } = serviceData;
-
-    if (!card) {
-        throw new Error(`Card required to render card fields`);
-    }
 
     if (cardFieldsOpen) {
         highlightCard(card);
@@ -142,7 +145,7 @@ function initCardFields({ props, components, payment, serviceData, config } : { 
         onApprove: ({ payerID, paymentID, billingToken }) => {
             // eslint-disable-next-line no-use-before-define
             return close().then(() => {
-                return onApprove({ payerID, paymentID, billingToken, buyerAccessToken }, { restart });
+                return onApprove({ payerID, paymentID, billingToken, buyerAccessToken }, { restart }).catch(noop);
             });
         },
 
@@ -155,14 +158,13 @@ function initCardFields({ props, components, payment, serviceData, config } : { 
         onClose,
         onCardTypeChange,
 
+        sessionID,
         buttonSessionID,
         buyerCountry,
         locale,
         commit,
         cspNonce
     });
-
-    cardFieldsOpen = true;
 
     const start = () => {
         cardFieldsOpen = true;
@@ -174,16 +176,19 @@ function initCardFields({ props, components, payment, serviceData, config } : { 
 
     const close = () => {
         slideDownButtons();
-        return closeCardFields();
+        return closeCardFields().then(() => {
+            cardFieldsOpen = false;
+        });
     };
 
     return { start, close };
 }
 
 export const cardFields : PaymentFlow = {
-    setup:      setupCardFields,
-    isEligible: isCardFieldsEligible,
-    init:       initCardFields,
-    spinner:    true,
-    inline:     true
+    name:              'card_fields',
+    setup:             setupCardFields,
+    isEligible:        isCardFieldsEligible,
+    isPaymentEligible: isCardFieldsPaymentEligible,
+    init:              initCardFields,
+    inline:            true
 };

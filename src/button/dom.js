@@ -9,13 +9,14 @@ export function getButtons() : $ReadOnlyArray<HTMLElement> {
     return querySelectorAll(`[ ${ DATA_ATTRIBUTES.FUNDING_SOURCE } ]`);
 }
 
-export function getSelectedFunding(button : HTMLElement) : { fundingSource : $Values<typeof FUNDING>, card : $Values<typeof CARD>, paymentMethodID : ?string } {
+export function getSelectedFunding(button : HTMLElement) : {| fundingSource : $Values<typeof FUNDING>, card : $Values<typeof CARD>, paymentMethodID : ?string, instrumentID : ?string |} {
     const fundingSource = button.getAttribute(DATA_ATTRIBUTES.FUNDING_SOURCE);
     const paymentMethodID = button.getAttribute(DATA_ATTRIBUTES.PAYMENT_METHOD_ID);
+    const instrumentID = button.getAttribute(DATA_ATTRIBUTES.INSTRUMENT_ID);
     const card = button.getAttribute(DATA_ATTRIBUTES.CARD);
 
     // $FlowFixMe
-    return { fundingSource, card, paymentMethodID };
+    return { fundingSource, card, paymentMethodID, instrumentID };
 }
 
 export function enableLoadingSpinner(button : HTMLElement) {
@@ -24,12 +25,4 @@ export function enableLoadingSpinner(button : HTMLElement) {
 
 export function disableLoadingSpinner(button : HTMLElement) {
     button.classList.remove(CLASS.LOADING);
-}
-
-export function getNonce() : string {
-    let nonce = '';
-    if (document.body) {
-        nonce = document.body.getAttribute('data-nonce') || '';
-    }
-    return nonce;
 }
